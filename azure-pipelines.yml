@@ -2,9 +2,13 @@ trigger:
 - none  # run only when manually triggered
 
 variables:
-- group: AWS-Credentials     # ✅ Connect your AWS secrets from variable group
-  terraformVersion: '1.6.0'
-  environment: 'dev'
+- group: AWS-Credentials
+
+- name: terraformVersion
+  value: '1.6.0'
+
+- name: environment
+  value: 'dev'
 
 stages:
 - stage: TerraformPlan
