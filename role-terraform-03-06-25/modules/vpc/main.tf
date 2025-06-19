@@ -66,7 +66,7 @@ resource "aws_internet_gateway" "igw" {
 
 
 resource "aws_eip" "nat" {
--  vpc = true
+  vpc = true
   tags = {
     "Name" = "${var.customer_name}-${var.Environment}-nat-gateway-ip"
   }
