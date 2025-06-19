@@ -17,7 +17,7 @@ stages:
   - job: plan
     displayName: Terraform Plan
     pool:
-      vmImage: 'ubuntu-latest'
+      name: Default
     steps:
     - checkout: self
 
