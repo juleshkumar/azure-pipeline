@@ -37,7 +37,7 @@ stages:
 
     - script: |
         cd environments/$(environment)
-        terraform plan -var-file="dev.tfvars" -out=tfplan
+        terraform plan -var-file="environments/dev/dev.tfvars" -out=tfplan
       displayName: "Terraform Plan"
 
     - task: PublishBuildArtifacts@1
