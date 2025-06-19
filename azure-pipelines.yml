@@ -1,0 +1,80 @@
+trigger:
+- none  # run only when manually triggered
+
+variables:
+- group: AWS-Credentials     # ✅ Connect your AWS secrets from variable group
+  terraformVersion: '1.6.0'
+  environment: 'dev'
+
+stages:
+- stage: TerraformPlan
+  displayName: Terraform Init and Plan
+  jobs:
+  - job: plan
+    displayName: Terraform Plan
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+
+    - task: UseTerraform@1
+      inputs:
+        terraformVersion: $(terraformVersion)
+
+    - script: |
+        cd environments/$(environment)
+        terraform init
+      displayName: "Terraform Init"
+
+    - script: |
+        cd environments/$(environment)
+        terraform plan -var-file="dev.tfvars" -out=tfplan
+      displayName: "Terraform Plan"
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: 'environments/$(environment)/tfplan'
+        ArtifactName: 'terraformPlan'
+      displayName: "Publish Terraform Plan"
+
+- stage: ManualApproval
+  displayName: 'Manual Approval'
+  dependsOn: TerraformPlan
+  jobs:
+  - job: waitForApproval
+    displayName: Wait for Manual Approval
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: ManualValidation@0
+      inputs:
+        instructions: 'Please approve to proceed with Terraform apply'
+        timeout: '1d'
+
+- stage: TerraformApply
+  displayName: Terraform Apply
+  dependsOn: ManualApproval
+  jobs:
+  - job: apply
+    displayName: Apply Terraform Plan
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+
+    - task: UseTerraform@1
+      inputs:
+        terraformVersion: $(terraformVersion)
+
+    - script: |
+        cd environments/$(environment)
+        terraform init
+      displayName: "Terraform Init"
+
+    - download: current
+      artifact: terraformPlan
+
+    - script: |
+        cd environments/$(environment)
+        terraform apply tfplan
+      displayName: "Terraform Apply"
