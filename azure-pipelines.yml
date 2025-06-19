@@ -1,8 +1,8 @@
 trigger:
-- none  # Manual run only
+- none  # Run only when manually triggered
 
 variables:
-- group: AWS-Credentials  # Your secure AWS creds
+- group: AWS-Credentials  # Secure AWS credentials
 - name: terraformVersion
   value: '1.6.0'
 - name: environment
@@ -15,18 +15,16 @@ stages:
   - job: plan
     displayName: Terraform Plan
     pool:
-      name: Default
+      name: Default  # ✅ Self-hosted agent pool
     steps:
     - checkout: self
 
     - script: |
-        echo "🔍 Current working directory:"
+        echo "🔍 Checking structure before plan"
         pwd
-        echo "📁 Listing all files:"
         ls -la
-        echo "📁 Inside project folder:"
-        ls -la role-terraform-03-06-25
-      displayName: "Debug: Check Folder Structure"
+        ls -la role-terraform-03-06-25/environments/$(environment)
+      displayName: "DEBUG: Show Folder Structure"
 
     - script: |
         echo "⬇️ Installing Terraform..."
@@ -60,15 +58,17 @@ stages:
   jobs:
   - deployment: apply
     displayName: Apply Terraform Plan
-    environment: dev
+    environment: dev  # Must match Azure DevOps environment name
     strategy:
       runOnce:
         deploy:
+          pool:
+            name: Default  # ✅ Self-hosted agent again
           steps:
           - checkout: self
 
           - script: echo "✅ Starting Apply Stage..."
-            displayName: "Debug: Apply Stage Start"
+            displayName: "Start Apply"
 
           - script: |
               echo "⬇️ Installing Terraform..."
@@ -77,17 +77,24 @@ stages:
               unzip terraform.zip
               sudo mv terraform /usr/local/bin/
               terraform -version
-            displayName: "Install Terraform CLI Again"
+            displayName: "Install Terraform CLI"
+
+          - download: current
+            artifact: terraformPlan
+            displayName: "Download Terraform Plan Artifact"
+
+          - script: |
+              echo "🔍 Validating downloaded plan file..."
+              cd role-terraform-03-06-25/environments/$(environment)
+              ls -la
+              if [ ! -f "tfplan" ]; then
+                echo "❌ tfplan file not found!"
+                exit 1
+              fi
+            displayName: "DEBUG: Check tfplan File"
 
           - script: |
               cd role-terraform-03-06-25/environments/$(environment)
               terraform init
-            displayName: "Terraform Init Again"
-
-          - download: current
-            artifact: terraformPlan
-
-          - script: |
-              cd role-terraform-03-06-25/environments/$(environment)
               terraform apply tfplan
             displayName: "Terraform Apply"
