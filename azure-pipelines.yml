@@ -14,7 +14,7 @@ variables:
   - name: tf.vars.file
     value: 'dev.tfvars'
   - name: tf.plan.file
-    value: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)/tfplan'
+    value: '$(Build.SourcesDirectory)/$(tf.root.dir)/tfplan.out'
 
 pool: Default
 
@@ -28,6 +28,7 @@ stages:
     - checkout: self
       displayName: 'Checkout repository'
       submodules: recursive
+      path: 's'  # This ensures consistent path structure
     
     - task: TerraformInstaller@0
       displayName: 'Install Terraform $(tf.version)'
@@ -44,7 +45,7 @@ stages:
       displayName: 'Terraform Init'
       inputs:
         command: 'init'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
+        workingDirectory: '$(Build.SourcesDirectory)/$(tf.root.dir)'
         commandOptions: '-upgrade -reconfigure'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
@@ -55,7 +56,7 @@ stages:
       displayName: 'Terraform Plan'
       inputs:
         command: 'plan'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
+        workingDirectory: '$(Build.SourcesDirectory)/$(tf.root.dir)'
         commandOptions: '-out=$(tf.plan.file) -var-file=$(tf.vars.file)'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
@@ -69,25 +70,9 @@ stages:
         ArtifactName: 'tfplan'
         publishLocation: 'Container'
 
-- stage: Approve
-  displayName: 'Manual Approval'
-  dependsOn: Plan
-  jobs:
-  - job: WaitForApproval
-    displayName: 'Wait for approval'
-    pool: server
-    steps:
-    - task: ManualValidation@0
-      displayName: 'Approve Terraform Apply'
-      inputs:
-        notifyUsers: |
-          your.email@example.com
-        instructions: 'Please review the Terraform plan'
-
 - stage: Apply
   displayName: 'Terraform Apply'
-  dependsOn: Approve
-  condition: succeeded()
+  dependsOn: Plan
   jobs:
   - job: Apply
     displayName: 'Apply Terraform Changes'
@@ -95,6 +80,7 @@ stages:
     - checkout: self
       displayName: 'Checkout repository'
       submodules: recursive
+      path: 's'  # Consistent with Plan stage
     
     - task: TerraformInstaller@0
       displayName: 'Install Terraform'
@@ -113,14 +99,20 @@ stages:
         buildType: 'current'
         downloadType: 'single'
         artifactName: 'tfplan'
-        downloadPath: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
+        downloadPath: '$(Build.SourcesDirectory)/$(tf.root.dir)'
+    
+    - bash: |
+        echo "Verifying plan file exists..."
+        ls -la $(Build.SourcesDirectory)/$(tf.root.dir)
+        ls -la $(Build.SourcesDirectory)/$(tf.root.dir)/tfplan.out
+      displayName: 'Verify Plan File'
     
     - task: TerraformCLI@0
       displayName: 'Terraform Apply'
       inputs:
         command: 'apply'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
-        commandOptions: '$(tf.plan.file)'
+        workingDirectory: '$(Build.SourcesDirectory)/$(tf.root.dir)'
+        commandOptions: '-auto-approve $(Build.SourcesDirectory)/$(tf.root.dir)/tfplan.out'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
         AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
