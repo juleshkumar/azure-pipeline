@@ -17,15 +17,16 @@ variables:
 pool: Default
 
 stages:
-- stage: Init
-  displayName: 'Initialize Terraform'
+- stage: InitAndValidate
+  displayName: 'Initialize & Validate'
   jobs:
-  - job: Initialize
-    displayName: 'Terraform Init'
+  - job: Terraform
+    displayName: 'Terraform Operations'
     steps:
     - checkout: self
       displayName: 'Checkout repository'
-      submodules: recursive  # Critical for module initialization
+      submodules: recursive
+      path: '$(tf.root.dir)'
     
     - task: TerraformInstaller@0
       displayName: 'Install Terraform $(tf.version)'
@@ -48,19 +49,6 @@ stages:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
         AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
         AWS_DEFAULT_REGION: $(aws.region)
-
-- stage: Validate
-  displayName: 'Validate Terraform'
-  dependsOn: Init
-  jobs:
-  - job: Validate
-    displayName: 'Terraform Validate'
-    steps:
-    - bash: |
-        echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID]$(AWS_ACCESS_KEY_ID)"
-        echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY]$(AWS_SECRET_ACCESS_KEY)"
-        echo "##vso[task.setvariable variable=AWS_DEFAULT_REGION]$(aws.region)"
-      displayName: 'Set AWS Credentials'
     
     - task: TerraformCLI@0
       displayName: 'Terraform Validate'
@@ -71,5 +59,79 @@ stages:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
         AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
         AWS_DEFAULT_REGION: $(aws.region)
+    
+    - task: TerraformCLI@0
+      displayName: 'Terraform Plan'
+      inputs:
+        command: 'plan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
+        commandOptions: '-out=tfplan -var-file=$(tf.vars.file)'
+      env:
+        AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+        AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+        AWS_DEFAULT_REGION: $(aws.region)
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Plan Artifact'
+      inputs:
+        PathtoPublish: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)/tfplan'
+        ArtifactName: 'tfplan'
+        publishLocation: 'Container'
 
-# Rest of your pipeline (Plan, Approve, Apply stages) remains the same
+- stage: Approve
+  displayName: 'Manual Approval'
+  dependsOn: InitAndValidate
+  jobs:
+  - job: WaitForApproval
+    displayName: 'Wait for approval'
+    pool: server
+    steps:
+    - task: ManualValidation@0
+      displayName: 'Approve Terraform Apply'
+      inputs:
+        notifyUsers: |
+          your.email@example.com
+        instructions: 'Please review the Terraform plan'
+
+- stage: Apply
+  displayName: 'Terraform Apply'
+  dependsOn: Approve
+  condition: succeeded()
+  jobs:
+  - job: Apply
+    displayName: 'Apply Terraform Changes'
+    steps:
+    - checkout: self
+      displayName: 'Checkout repository'
+      submodules: recursive
+      path: '$(tf.root.dir)'
+    
+    - task: TerraformInstaller@0
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: $(tf.version)
+    
+    - bash: |
+        echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID]$(AWS_ACCESS_KEY_ID)"
+        echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY]$(AWS_SECRET_ACCESS_KEY)"
+        echo "##vso[task.setvariable variable=AWS_DEFAULT_REGION]$(aws.region)"
+      displayName: 'Set AWS Credentials'
+    
+    - task: DownloadBuildArtifacts@0
+      displayName: 'Download Plan Artifact'
+      inputs:
+        buildType: 'current'
+        downloadType: 'single'
+        artifactName: 'tfplan'
+        downloadPath: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
+    
+    - task: TerraformCLI@0
+      displayName: 'Terraform Apply'
+      inputs:
+        command: 'apply'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
+        commandOptions: 'tfplan'
+      env:
+        AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+        AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+        AWS_DEFAULT_REGION: $(aws.region)
