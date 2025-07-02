@@ -13,8 +13,8 @@ variables:
     value: 'role-terraform-03-06-25/environments/dev'
   - name: tf.vars.file
     value: 'dev.tfvars'
-  - name: tf.plan.file
-    value: 'plan.out'  # Simple filename without path
+  - name: tf.plan.path
+    value: '$(tf.root.dir)/tfplan/plan.out'  # Explicit path including tfplan directory
 
 pool: Default
 
@@ -52,17 +52,17 @@ stages:
         AWS_DEFAULT_REGION: $(aws.region)
     
     - bash: |
-        echo "Cleaning up any existing plan files..."
-        rm -f $(tf.root.dir)/plan.out
-        rm -rf $(tf.root.dir)/tfplan
-      displayName: 'Clean Previous Plans'
+        echo "Creating tfplan directory..."
+        mkdir -p $(tf.root.dir)/tfplan
+        rm -f $(tf.plan.path)
+      displayName: 'Prepare Plan Directory'
     
     - task: TerraformCLI@0
       displayName: 'Terraform Plan'
       inputs:
         command: 'plan'
         workingDirectory: '$(tf.root.dir)'
-        commandOptions: '-out=plan.out -var-file=$(tf.vars.file)'
+        commandOptions: '-out=tfplan/plan.out -var-file=$(tf.vars.file)'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
         AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
@@ -70,14 +70,14 @@ stages:
     
     - bash: |
         echo "Verifying plan file was created..."
-        ls -la $(tf.root.dir)
-        [ -f $(tf.root.dir)/plan.out ] || exit 1
+        ls -la $(tf.root.dir)/tfplan
+        [ -f $(tf.plan.path) ] || exit 1
       displayName: 'Verify Plan File Creation'
     
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Plan Artifact'
       inputs:
-        PathtoPublish: '$(tf.root.dir)/plan.out'
+        PathtoPublish: '$(tf.root.dir)/tfplan'
         ArtifactName: 'tfplan'
         publishLocation: 'Container'
 
@@ -113,8 +113,8 @@ stages:
     
     - bash: |
         echo "Verifying downloaded plan file..."
-        ls -la $(tf.root.dir)
-        [ -f $(tf.root.dir)/plan.out ] || exit 1
+        ls -la $(tf.root.dir)/tfplan
+        [ -f $(tf.plan.path) ] || exit 1
       displayName: 'Verify Plan File Download'
     
     - task: TerraformCLI@0
@@ -122,7 +122,7 @@ stages:
       inputs:
         command: 'apply'
         workingDirectory: '$(tf.root.dir)'
-        commandOptions: '-auto-approve plan.out'
+        commandOptions: '-auto-approve tfplan/plan.out'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
         AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
