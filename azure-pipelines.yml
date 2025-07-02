@@ -14,7 +14,7 @@ variables:
   - name: tf.vars.file
     value: 'dev.tfvars'
   - name: tf.plan.file
-    value: 'tfplan.binary'  # Changed to binary format to avoid directory creation
+    value: 'plan.out'  # Simple filename without path
 
 pool: Default
 
@@ -51,12 +51,18 @@ stages:
         AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
         AWS_DEFAULT_REGION: $(aws.region)
     
+    - bash: |
+        echo "Cleaning up any existing plan files..."
+        rm -f $(tf.root.dir)/plan.out
+        rm -rf $(tf.root.dir)/tfplan
+      displayName: 'Clean Previous Plans'
+    
     - task: TerraformCLI@0
       displayName: 'Terraform Plan'
       inputs:
         command: 'plan'
         workingDirectory: '$(tf.root.dir)'
-        commandOptions: '-out=$(tf.plan.file) -var-file=$(tf.vars.file)'
+        commandOptions: '-out=plan.out -var-file=$(tf.vars.file)'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
         AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
@@ -65,13 +71,13 @@ stages:
     - bash: |
         echo "Verifying plan file was created..."
         ls -la $(tf.root.dir)
-        ls -la $(tf.root.dir)/$(tf.plan.file)
+        [ -f $(tf.root.dir)/plan.out ] || exit 1
       displayName: 'Verify Plan File Creation'
     
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Plan Artifact'
       inputs:
-        PathtoPublish: '$(tf.root.dir)/$(tf.plan.file)'
+        PathtoPublish: '$(tf.root.dir)/plan.out'
         ArtifactName: 'tfplan'
         publishLocation: 'Container'
 
@@ -108,7 +114,7 @@ stages:
     - bash: |
         echo "Verifying downloaded plan file..."
         ls -la $(tf.root.dir)
-        ls -la $(tf.root.dir)/$(tf.plan.file)
+        [ -f $(tf.root.dir)/plan.out ] || exit 1
       displayName: 'Verify Plan File Download'
     
     - task: TerraformCLI@0
@@ -116,7 +122,7 @@ stages:
       inputs:
         command: 'apply'
         workingDirectory: '$(tf.root.dir)'
-        commandOptions: '-auto-approve $(tf.plan.file)'
+        commandOptions: '-auto-approve plan.out'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
         AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
