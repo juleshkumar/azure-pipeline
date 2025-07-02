@@ -14,7 +14,7 @@ variables:
   - name: tf.vars.file
     value: 'dev.tfvars'
   - name: tf.plan.file
-    value: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
+    value: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)/tfplan'
 
 pool: Default
 
@@ -113,13 +113,13 @@ stages:
         buildType: 'current'
         downloadType: 'single'
         artifactName: 'tfplan'
-        downloadPath: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)/tfplan'
+        downloadPath: '$(System.DefaultWorkingDirectory)/$(tf.plan.file)'
     
     - task: TerraformCLI@0
       displayName: 'Terraform Apply'
       inputs:
         command: 'apply'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)/tfplan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.plan.file)'
         commandOptions: '$(tf.plan.file)'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
