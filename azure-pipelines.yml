@@ -14,7 +14,7 @@ variables:
   - name: tf.vars.file
     value: 'dev.tfvars'
   - name: tf.plan.file
-    value: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)/tfplan'
+    value: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
 
 pool: Default
 
@@ -119,7 +119,7 @@ stages:
       displayName: 'Terraform Apply'
       inputs:
         command: 'apply'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)/tfplan'
         commandOptions: '$(tf.plan.file)'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
