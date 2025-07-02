@@ -14,7 +14,7 @@ variables:
   - name: tf.vars.file
     value: 'dev.tfvars'
   - name: tf.plan.path
-    value: '$(tf.root.dir)/tfplan/plan.out'  # Explicit path including tfplan directory
+    value: '$(tf.root.dir)/tfplan/plan.out'
 
 pool: Default
 
@@ -28,6 +28,7 @@ stages:
     - checkout: self
       displayName: 'Checkout repository'
       submodules: recursive
+      persistCredentials: true
     
     - task: TerraformInstaller@0
       displayName: 'Install Terraform $(tf.version)'
@@ -39,6 +40,12 @@ stages:
         echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY]$(AWS_SECRET_ACCESS_KEY)"
         echo "##vso[task.setvariable variable=AWS_DEFAULT_REGION]$(aws.region)"
       displayName: 'Set AWS Credentials'
+    
+    - bash: |
+        echo "Cleaning previous Terraform files..."
+        rm -rf $(tf.root.dir)/.terraform
+        rm -f $(tf.root.dir)/.terraform.lock.hcl
+      displayName: 'Clean Terraform Cache'
     
     - task: TerraformCLI@0
       displayName: 'Terraform Init'
@@ -69,10 +76,9 @@ stages:
         AWS_DEFAULT_REGION: $(aws.region)
     
     - bash: |
-        echo "Verifying plan file was created..."
-        ls -la $(tf.root.dir)/tfplan
-        [ -f $(tf.plan.path) ] || exit 1
-      displayName: 'Verify Plan File Creation'
+        echo "Publishing lock file with plan..."
+        cp $(tf.root.dir)/.terraform.lock.hcl $(tf.root.dir)/tfplan/
+      displayName: 'Include Lock File'
     
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Plan Artifact'
@@ -91,6 +97,7 @@ stages:
     - checkout: self
       displayName: 'Checkout repository'
       submodules: recursive
+      persistCredentials: true
     
     - task: TerraformInstaller@0
       displayName: 'Install Terraform'
@@ -103,6 +110,12 @@ stages:
         echo "##vso[task.setvariable variable=AWS_DEFAULT_REGION]$(aws.region)"
       displayName: 'Set AWS Credentials'
     
+    - bash: |
+        echo "Cleaning previous Terraform files..."
+        rm -rf $(tf.root.dir)/.terraform
+        rm -f $(tf.root.dir)/.terraform.lock.hcl
+      displayName: 'Clean Terraform Cache'
+    
     - task: DownloadBuildArtifacts@0
       displayName: 'Download Plan Artifact'
       inputs:
@@ -112,10 +125,20 @@ stages:
         downloadPath: '$(tf.root.dir)'
     
     - bash: |
-        echo "Verifying downloaded plan file..."
-        ls -la $(tf.root.dir)/tfplan
-        [ -f $(tf.plan.path) ] || exit 1
-      displayName: 'Verify Plan File Download'
+        echo "Restoring lock file..."
+        cp $(tf.root.dir)/tfplan/.terraform.lock.hcl $(tf.root.dir)/
+      displayName: 'Restore Lock File'
+    
+    - task: TerraformCLI@0
+      displayName: 'Terraform Init'
+      inputs:
+        command: 'init'
+        workingDirectory: '$(tf.root.dir)'
+        commandOptions: '-upgrade -reconfigure'
+      env:
+        AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+        AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+        AWS_DEFAULT_REGION: $(aws.region)
     
     - task: TerraformCLI@0
       displayName: 'Terraform Apply'
