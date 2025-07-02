@@ -13,20 +13,21 @@ variables:
     value: 'role-terraform-03-06-25/environments/dev'
   - name: tf.vars.file
     value: 'dev.tfvars'
+  - name: tf.plan.file
+    value: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)/tfplan'
 
 pool: Default
 
 stages:
-- stage: InitAndValidate
-  displayName: 'Initialize & Validate'
+- stage: Plan
+  displayName: 'Terraform Plan'
   jobs:
-  - job: Terraform
-    displayName: 'Terraform Operations'
+  - job: Plan
+    displayName: 'Generate Terraform Plan'
     steps:
     - checkout: self
       displayName: 'Checkout repository'
       submodules: recursive
-      path: '$(tf.root.dir)'
     
     - task: TerraformInstaller@0
       displayName: 'Install Terraform $(tf.version)'
@@ -51,21 +52,11 @@ stages:
         AWS_DEFAULT_REGION: $(aws.region)
     
     - task: TerraformCLI@0
-      displayName: 'Terraform Validate'
-      inputs:
-        command: 'validate'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
-      env:
-        AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-        AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-        AWS_DEFAULT_REGION: $(aws.region)
-    
-    - task: TerraformCLI@0
       displayName: 'Terraform Plan'
       inputs:
         command: 'plan'
         workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
-        commandOptions: '-out=tfplan -var-file=$(tf.vars.file)'
+        commandOptions: '-out=$(tf.plan.file) -var-file=$(tf.vars.file)'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
         AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
@@ -74,13 +65,13 @@ stages:
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Plan Artifact'
       inputs:
-        PathtoPublish: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)/tfplan'
+        PathtoPublish: '$(tf.plan.file)'
         ArtifactName: 'tfplan'
         publishLocation: 'Container'
 
 - stage: Approve
   displayName: 'Manual Approval'
-  dependsOn: InitAndValidate
+  dependsOn: Plan
   jobs:
   - job: WaitForApproval
     displayName: 'Wait for approval'
@@ -104,7 +95,6 @@ stages:
     - checkout: self
       displayName: 'Checkout repository'
       submodules: recursive
-      path: '$(tf.root.dir)'
     
     - task: TerraformInstaller@0
       displayName: 'Install Terraform'
@@ -130,7 +120,7 @@ stages:
       inputs:
         command: 'apply'
         workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
-        commandOptions: 'tfplan'
+        commandOptions: '$(tf.plan.file)'
       env:
         AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
         AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
