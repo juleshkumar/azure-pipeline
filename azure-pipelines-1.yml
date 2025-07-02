@@ -1,6 +1,12 @@
 # azure-pipelines-destroy.yml
 trigger: none  # Manual trigger only
 
+resources:
+  repositories:
+    - repository: self
+      type: git
+      ref: main  # Your branch name
+
 variables:
   - group: AWS-Credentials
   - name: tf.version
@@ -16,50 +22,46 @@ stages:
 - stage: Destroy
   displayName: 'Terraform Destroy'
   jobs:
-  - job: Destroy
+  - deployment: Destroy_Infrastructure  # Changed to deployment job for approvals
     displayName: 'Destroy Infrastructure'
-    steps:
-    - checkout: self
-      displayName: 'Checkout repository'
-      submodules: recursive
-    
-    - task: TerraformInstaller@0
-      displayName: 'Install Terraform'
-      inputs:
-        terraformVersion: $(tf.version)
-    
-    - bash: |
-        echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID]$(AWS_ACCESS_KEY_ID)"
-        echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY]$(AWS_SECRET_ACCESS_KEY)"
-        echo "##vso[task.setvariable variable=AWS_DEFAULT_REGION]$(aws.region)"
-      displayName: 'Set AWS Credentials'
-    
-    - task: TerraformCLI@0
-      displayName: 'Terraform Init'
-      inputs:
-        command: 'init'
-        workingDirectory: '$(tf.root.dir)'
-        commandOptions: '-upgrade -reconfigure'
-      env:
-        AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-        AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-        AWS_DEFAULT_REGION: $(aws.region)
-    
-    - task: ManualValidation@0
-      displayName: 'Confirm Destruction'
-      timeoutInMinutes: 5
-      inputs:
-        notifyUsers: |
-          admin@example.com
-        instructions: 'WARNING: This will DESTROY all infrastructure. Confirm to proceed.'
-    
-    - task: TerraformCLI@0
-      displayName: 'Terraform Destroy'
-      inputs:
-        command: 'destroy'
-        workingDirectory: '$(tf.root.dir)'
-        commandOptions: '-auto-approve -var-file=dev.tfvars'
-      env:
-        AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-        AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-        AWS_DEFAULT_REGION: $(aws.region)
+    environment: 'Production'  # Requires environment with approval checks
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+            displayName: 'Checkout repository'
+            submodules: recursive
+          
+          - task: TerraformInstaller@0
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: $(tf.version)
+          
+          - bash: |
+              echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID]$(AWS_ACCESS_KEY_ID)"
+              echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY]$(AWS_SECRET_ACCESS_KEY)"
+              echo "##vso[task.setvariable variable=AWS_DEFAULT_REGION]$(aws.region)"
+            displayName: 'Set AWS Credentials'
+          
+          - task: TerraformCLI@0
+            displayName: 'Terraform Init'
+            inputs:
+              command: 'init'
+              workingDirectory: '$(tf.root.dir)'
+              commandOptions: '-upgrade -reconfigure'
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_DEFAULT_REGION: $(aws.region)
+          
+          - task: TerraformCLI@0
+            displayName: 'Terraform Destroy'
+            inputs:
+              command: 'destroy'
+              workingDirectory: '$(tf.root.dir)'
+              commandOptions: '-auto-approve -var-file=dev.tfvars'
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_DEFAULT_REGION: $(aws.region)
