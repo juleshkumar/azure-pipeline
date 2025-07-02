@@ -2,6 +2,7 @@ trigger:
 - main
 
 variables:
+  - group: AWS-Credentials  # Your variable group with AWS secrets
   - name: tf.version
     value: '1.12.2'
   - name: aws.region
@@ -12,6 +13,8 @@ variables:
     value: 'role-terraform-03-06-25/environments/dev'
   - name: tf.vars.file
     value: 'dev.tfvars'
+
+pool: Default  # Or your self-hosted agent pool name
 
 stages:
 - stage: Validate
@@ -25,14 +28,11 @@ stages:
       inputs:
         terraformVersion: $(tf.version)
     
-    - task: AWSShellScript@1
-      displayName: 'Configure AWS Credentials'
-      inputs:
-        awsCredentials: 'AWS-Credentials'
-        regionName: $(aws.region)
-        scriptType: 'inline'
-        inlineScript: |
-          echo "AWS credentials configured"
+    - bash: |
+        echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID]$(AWS_ACCESS_KEY_ID)"
+        echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY]$(AWS_SECRET_ACCESS_KEY)"
+        echo "##vso[task.setvariable variable=AWS_DEFAULT_REGION]$(aws.region)"
+      displayName: 'Set AWS Credentials'
     
     - task: TerraformCLI@0
       displayName: 'Terraform Init'
@@ -58,20 +58,11 @@ stages:
       inputs:
         terraformVersion: $(tf.version)
     
-    - task: AWSShellScript@1
-      displayName: 'Configure AWS Credentials'
-      inputs:
-        awsCredentials: 'AWS-Credentials'
-        regionName: $(aws.region)
-        scriptType: 'inline'
-        inlineScript: |
-          echo "AWS credentials configured"
-    
-    - task: TerraformCLI@0
-      displayName: 'Terraform Init'
-      inputs:
-        command: 'init'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
+    - bash: |
+        echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID]$(AWS_ACCESS_KEY_ID)"
+        echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY]$(AWS_SECRET_ACCESS_KEY)"
+        echo "##vso[task.setvariable variable=AWS_DEFAULT_REGION]$(aws.region)"
+      displayName: 'Set AWS Credentials'
     
     - task: TerraformCLI@0
       displayName: 'Terraform Plan'
@@ -79,7 +70,6 @@ stages:
         command: 'plan'
         workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
         commandOptions: '-out=tfplan -var-file=$(tf.vars.file)'
-        environmentServiceNameAWS: 'AWS-Credentials'
     
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Plan Artifact'
@@ -94,7 +84,7 @@ stages:
   jobs:
   - job: WaitForApproval
     displayName: 'Wait for approval'
-    pool: server
+    pool: server  # This still uses hosted for approval
     steps:
     - task: ManualValidation@0
       displayName: 'Approve Terraform Apply'
@@ -110,20 +100,18 @@ stages:
   jobs:
   - job: Apply
     displayName: 'Apply Terraform Changes'
+    pool: Default  # Your self-hosted agent
     steps:
     - task: TerraformInstaller@0
       displayName: 'Install Terraform'
       inputs:
         terraformVersion: $(tf.version)
     
-    - task: AWSShellScript@1
-      displayName: 'Configure AWS Credentials'
-      inputs:
-        awsCredentials: 'AWS-Credentials'
-        regionName: $(aws.region)
-        scriptType: 'inline'
-        inlineScript: |
-          echo "AWS credentials configured"
+    - bash: |
+        echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID]$(AWS_ACCESS_KEY_ID)"
+        echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY]$(AWS_SECRET_ACCESS_KEY)"
+        echo "##vso[task.setvariable variable=AWS_DEFAULT_REGION]$(aws.region)"
+      displayName: 'Set AWS Credentials'
     
     - task: DownloadBuildArtifacts@0
       displayName: 'Download Plan Artifact'
@@ -139,4 +127,3 @@ stages:
         command: 'apply'
         workingDirectory: '$(System.DefaultWorkingDirectory)/$(tf.root.dir)'
         commandOptions: 'tfplan'
-        environmentServiceNameAWS: 'AWS-Credentials'
